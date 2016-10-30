@@ -1,6 +1,9 @@
 <?php
 
 $config = json_decode(file_get_contents(dirname(__FILE__) . "/install.json"), true);
+if (!is_array($config)) {
+	die("[ERROR] Cannot parse JSON file at [". dirname(__FILE__) . "/install.json" ."]\n");
+}
 
 define('PIWIK_DOCUMENT_ROOT', $config['document_root']);
 if (file_exists(PIWIK_DOCUMENT_ROOT . '/bootstrap.php')) {
@@ -159,6 +162,7 @@ class PiwikCliInstall {
 
 		$config = Config::getInstance();
 		unset($config->General['installation_in_progress']);
+		unset($config->database['adapter']);
 		$config->forceSave();
 
 		// Put in Activated plugins
