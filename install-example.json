@@ -26,6 +26,9 @@
     "plugins": [
         "YourPluginWhichYouveAlreadyPutInThePLUGINSDirectory"
     ],
+    "deactivate_plugins": [
+        "ExamplePlugin"
+    ],
     "extras": {
         "General": {
             "enable_framed_pages": 1,

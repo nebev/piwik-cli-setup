@@ -73,6 +73,7 @@ class PiwikCliInstall {
 		$this->setupPlugins();
 		$this->setConfigExtras();
 		$this->setOptionExtras();
+		$this->deactivatePlugins();
 		$this->setBranding();
 	}
 
@@ -265,6 +266,18 @@ class PiwikCliInstall {
 
 			// And Update Core
 			exec("php " . PIWIK_DOCUMENT_ROOT . "/console core:update --yes");
+		}
+	}
+
+	/**
+	 * Deactivates any default plugins specified
+	 * [deactivate_plugins] in config should be set
+	 */
+	protected function deactivatePlugins() {
+		if (array_key_exists('deactivate_plugins', $this->config) && is_array($this->config['deactivate_plugins'])) {
+			foreach ($this->config['deactivate_plugins'] as $plugin_to_deactivate) {
+				echo exec("php " . PIWIK_DOCUMENT_ROOT . "/console plugin:deactivate " . $plugin_to_deactivate) . "\n";
+			}
 		}
 	}
 
