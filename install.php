@@ -126,8 +126,10 @@ class PiwikCliInstall {
 		$config_arr = $this->config;
 		Access::doAsSuperUser(function () use ($config_arr) {
 			$api = APIUsersManager::getInstance();
-			$api->addUser($config_arr['login'], $config_arr['password'], $config_arr['email']);
-			$api->setSuperUserAccess($config_arr['login'], true);
+			if (!$api->userExists($config_arr['login']) and !$api->userEmailExists($config_arr['email'])) {
+				$api->addUser($config_arr['login'], $config_arr['password'], $config_arr['email']);
+				$api->setSuperUserAccess($config_arr['login'], true);
+			}
 		});
 	}
 
@@ -199,7 +201,7 @@ class PiwikCliInstall {
 					Option::set('PrivacyManager.ipAnonymizerEnabled', 0);
 				}
 			}
-			
+
 			if ( array_key_exists('honor_do_not_track', $this->config['privacy']) ) {
 				if ($this->config['privacy']['honor_do_not_track'] === true) {
 					Option::set('PrivacyManager.doNotTrackEnabled', 1);
@@ -250,12 +252,12 @@ class PiwikCliInstall {
 	 */
 	protected function setupPlugins() {
 		echo exec("php " . PIWIK_DOCUMENT_ROOT . "/console core:clear-caches") . "\n";
-		
+
 		if (array_key_exists('plugins', $this->config) && is_array($this->config['plugins'])) {
 			$config = Config::getInstance();
 			foreach($config->PluginsInstalled as $pi_arr) {
 				foreach($pi_arr as $pi) {
-					$config->Plugins[] = $pi;					
+					$config->Plugins[] = $pi;
 				}
 			}
 
