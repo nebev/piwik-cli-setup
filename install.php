@@ -1,5 +1,4 @@
 <?php
-
 $config = json_decode(file_get_contents(dirname(__FILE__) . "/install.json"), true);
 if (!is_array($config)) {
 	die("[ERROR] Cannot parse JSON file at [". dirname(__FILE__) . "/install.json" ."]\n");
@@ -64,7 +63,12 @@ class PiwikCliInstall {
 		$this->config = $config;
 	}
 
+	protected function log($text) {
+		echo date("Y-m-d H:i:s") . " - $text\n";
+	}
+
 	public function install() {
+		$this->log('Running Piwik Initial Install Script');
 		$this->prepare();
 		$this->initDBConnection();
 		$this->tableCreation();
@@ -81,6 +85,7 @@ class PiwikCliInstall {
 	}
 
 	protected function prepare() {
+		$this->log('Preparing Cache and Diagnostics');
 		Filesystem::deleteAllCacheOnUpdate();
         $diagnosticService = StaticContainer::get('Piwik\Plugins\Diagnostics\DiagnosticService');
 		$diagnosticService->runDiagnostics();
@@ -91,18 +96,32 @@ class PiwikCliInstall {
 	 * [database] should be in config. Should be an array with keys [host], [adapter], [username], [password], [dbname] and [tables_prefix]
 	 */
 	protected function initDBConnection() {
+		$this->log('Initialising Database Connections');
 		$config = Config::getInstance();
 		if (array_key_exists('session_save_handler', $this->config)) {
 			$config->General['session_save_handler'] = $this->config['session_save_handler'];
 		}
 
-		// $config->General['assume_secure_protocol'] = '1';
 		$config->General['salt'] = Common::generateUniqId();
 		$config->General['installation_in_progress'] = 1;
 		$config->database = $this->config['database'];
-		if (!DbHelper::isDatabaseConnectionUTF8()) {
+		
+		// Connect to the database with retry timeout so any provisioning scripts & DB setup scripts are given a chance
+		$retries = array(10, 20, 30, 40, 50, 60, 70, 80);
+		foreach( $retries as $retry_timeout_index => $retry_timeout ) {
+			try {
+				DbHelper::isDatabaseConnectionUTF8();
+				break;
+			} catch(\Exception $e) {
+				$this->log("Database connection failed. Retrying in $retry_timeout seconds.");
+				sleep($retry_timeout);
+			}
+		}
+
+		if (!DbHelper::isDatabaseConnectionUTF8()) {	// Exception will be thrown if cannot connect
 			$config->database['charset'] = 'utf8';
 		}
+		
 		$config->forceSave();
 	}
 
@@ -110,6 +129,7 @@ class PiwikCliInstall {
 	 * Performs the initial table creation for Piwik
 	 */
 	protected function tableCreation() {
+		$this->log('Ensuring Tables are Created');
 		$tablesInstalled = DbHelper::getTablesInstalled();
 		if (count($tablesInstalled) === 0) {
 			DbHelper::createTables();
@@ -123,6 +143,7 @@ class PiwikCliInstall {
 	 * [login], [password] and [email] should all be set in the config
 	 */
 	protected function createUser() {
+		$this->log('Ensuring Users get Created');
 		$config_arr = $this->config;
 		Access::doAsSuperUser(function () use ($config_arr) {
 			$api = APIUsersManager::getInstance();
@@ -138,6 +159,7 @@ class PiwikCliInstall {
 	 * [site_name], [site_url] and [base_domain] should all be set in config
 	 */
 	protected function addWebsite() {
+		$this->log('Adding Primary Website');
 		$config_arr = $this->config;
 		$result = Access::doAsSuperUser(function () use ($config_arr) {
 			return APISitesManager::getInstance()->addSite($config_arr['site_name'], $config_arr['site_url'], 0);
@@ -158,6 +180,7 @@ class PiwikCliInstall {
 	 * Finishes the fake installation. Removes 'installation_in_progress' in the config file and updates core.
 	 */
 	protected function finish() {
+		$this->log('Finalising primary install procedure');
 		Manager::getInstance()->loadPluginTranslations();
 		Manager::getInstance()->loadActivatedPlugins();
 		Manager::getInstance()->installLoadedPlugins();
@@ -178,6 +201,7 @@ class PiwikCliInstall {
 	 * [geo_provider] is mandatory. Only correct value implemented is [geoip_pecl]
 	 */
 	protected function setGeo() {
+		$this->log('Setting Geolocation');
 		Option::set('usercountry.location_provider', $this->config['geo_provider']);
 		if ( $this->config['geo_provider'] === 'geoip_pecl' ) {
 			Option::set('geoip.isp_db_url', '');
@@ -192,6 +216,7 @@ class PiwikCliInstall {
 	 * [privacy] can exist in config. Sub settings are [anonymize_ip] and [honor_do_not_track]
 	 */
 	protected function setPrivacy() {
+		$this->log('Setting up Privacy Rules');
 		if ( array_key_exists('privacy', $this->config) && is_array($this->config['privacy']) ) {
 			if ( array_key_exists('anonymize_ip', $this->config['privacy']) ) {
 				if ($this->config['privacy']['anonymize_ip'] === true) {
@@ -219,6 +244,7 @@ class PiwikCliInstall {
 	 *   Each sub-array item in key->value represents the config key and associated setting
 	 */
 	protected function setConfigExtras() {
+		$this->log('Setting up extra configuration');
 		if (array_key_exists('extras', $this->config) && is_array($this->config['extras'])) {
 
 			// 2 level array - section then setting
@@ -237,6 +263,7 @@ class PiwikCliInstall {
 	 * [branding] can exist in config, and can have keys [header_url] representing image for header
 	 */
 	protected function setBranding() {
+		$this->log('Setting Branding');
 		if (array_key_exists('branding', $this->config) && is_array($this->config['branding'])) {
 			if (array_key_exists('header_url', $this->config['branding'])) {
 				$image_contents = $this->getURL( $this->config['branding']['header_url'] );
@@ -251,6 +278,7 @@ class PiwikCliInstall {
 	 * [plugins] in config should be text based and already extracted in the plugins piwik directory
 	 */
 	protected function setupPlugins() {
+		$this->log('Setting up Extra Plugins');
 		echo exec("php " . PIWIK_DOCUMENT_ROOT . "/console core:clear-caches") . "\n";
 
 		if (array_key_exists('plugins', $this->config) && is_array($this->config['plugins'])) {
@@ -280,6 +308,7 @@ class PiwikCliInstall {
 	 * [deactivate_plugins] in config should be set
 	 */
 	protected function deactivatePlugins() {
+		$this->log('Deactivating unwanted plugins');
 		if (array_key_exists('deactivate_plugins', $this->config) && is_array($this->config['deactivate_plugins'])) {
 			foreach ($this->config['deactivate_plugins'] as $plugin_to_deactivate) {
 				echo exec("php " . PIWIK_DOCUMENT_ROOT . "/console plugin:deactivate " . $plugin_to_deactivate) . "\n";
@@ -292,6 +321,7 @@ class PiwikCliInstall {
 	 * [options] should be set and be key-value in order to use
 	 */
 	protected function setOptionExtras() {
+		$this->log('Setting custom options');
 		if (array_key_exists('options', $this->config) && is_array($this->config['options'])) {
 			foreach( $this->config['options'] as $option_key => $option_val ) {
 				Option::set($option_key, $option_val);
@@ -303,6 +333,7 @@ class PiwikCliInstall {
 	 * Gets a URL from the web and returns the contents as a string
 	 */
 	protected function getURL($url) {
+		$this->log('Fetching URL: ' . $url);
 		$ch = curl_init();
 		curl_setopt($ch, CURLOPT_URL, $url);
 		curl_setopt($ch, CURLOPT_VERBOSE, 0);
@@ -334,6 +365,7 @@ class PiwikCliInstall {
 
 
 	protected function updateComponents() {
+		$this->log('Updating Components');
 		Access::getInstance();
 
 		return Access::doAsSuperUser(function () {
