@@ -82,6 +82,7 @@ class PiwikCliInstall {
 		$this->setOptionExtras();
 		$this->deactivatePlugins();
 		$this->setBranding();
+		$this->setPluginSettings();
 	}
 
 	protected function prepare() {
@@ -378,6 +379,25 @@ class PiwikCliInstall {
 		$result = $updater->updateComponents($componentsWithUpdateFile);
 			return $result;
 		});
+	}
+
+	/**
+	 * Updates Piwik V3 Plugin Settings.
+	 * Looks for a [plugin_settings] key in config. Config then in key-value form nested under plugin_name
+	 */
+	protected function setPluginSettings() {
+		$this->log('Updating Plugin Settings');
+		if (array_key_exists('plugin_settings', $this->config)) {
+			if (class_exists("\\Piwik\\Plugins\\CorePluginsAdmin\\SettingsMetadata")) {
+				foreach($this->config['plugin_settings'] as $plugin_name => $plugin_settings) {
+					$this->log("Adding plugin settings for $plugin_name");
+					$settings = new \Piwik\Settings\Storage\Backend\PluginSettingsTable($plugin_name, "");
+					$settings->save( $plugin_settings );
+				}
+			} else {
+				$this->log("Cannot update plugin settings - Are you running Piwik 3?");
+			}
+		}
 	}
 
 }
