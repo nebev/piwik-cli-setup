@@ -115,6 +115,7 @@ class PiwikCliInstall {
 				break;
 			} catch(\Exception $e) {
 				$this->log("Database connection failed. Retrying in $retry_timeout seconds.");
+				$this->log($e->getMessage());
 				sleep($retry_timeout);
 			}
 		}
