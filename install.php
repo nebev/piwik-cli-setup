@@ -163,10 +163,15 @@ class PiwikCliInstall {
 	protected function addWebsite() {
 		$this->log('Adding Primary Website');
 		$config_arr = $this->config;
-		$result = Access::doAsSuperUser(function () use ($config_arr) {
-			return APISitesManager::getInstance()->addSite($config_arr['site_name'], $config_arr['site_url'], 0);
-		});
-		$trustedHosts = array(
+
+        Access::doAsSuperUser(function () use ($config_arr) {
+            $api = APISitesManager::getInstance();
+            if (count($api->getSitesIdFromSiteUrl($config_arr['site_url']))=== 0) {
+                $api->addSite($config_arr['site_name'], $config_arr['site_url'], 0);
+            }
+        });
+
+        $trustedHosts = array(
 			$config_arr['base_domain']
 		);
 		if (($host = $this->extractHost(urldecode($config_arr['site_url']))) !== false) {
