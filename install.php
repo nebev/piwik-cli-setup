@@ -163,9 +163,24 @@ class PiwikCliInstall {
 	protected function addWebsite() {
 		$this->log('Adding Primary Website');
 		$config_arr = $this->config;
-		$result = Access::doAsSuperUser(function () use ($config_arr) {
-			return APISitesManager::getInstance()->addSite($config_arr['site_name'], $config_arr['site_url'], 0);
+
+		Access::doAsSuperUser(function () use ($config_arr) {
+			$api = APISitesManager::getInstance();
+
+			$exists = false;
+			foreach ($api->getAllSites() as $site) {
+				if ($site['name'] == $config_arr['site_name'])
+				{
+					$this->log("Primary website found existing, not adding it again");
+					$exists = true;
+					break;
+				}
+			}
+			if (!$exists) {
+				$api->addSite($config_arr['site_name'], $config_arr['site_url'], 0);
+			}
 		});
+
 		$trustedHosts = array(
 			$config_arr['base_domain']
 		);
