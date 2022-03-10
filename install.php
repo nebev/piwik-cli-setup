@@ -28,6 +28,7 @@ if (!defined('PIWIK_ENABLE_ERROR_HANDLER') || PIWIK_ENABLE_ERROR_HANDLER) {
 use Piwik\ErrorHandler;
 use Piwik\ExceptionHandler;
 use Piwik\FrontController;
+use Piwik\AssetManager;
 use Piwik\Access;
 use Piwik\Common;
 use Piwik\Plugins\UsersManager\API as APIUsersManager;
@@ -68,6 +69,13 @@ class PiwikCliInstall {
 	}
 
 	public function install() {
+
+		$this->log("Setting theme is a requirement");
+		$manager = Manager::getInstance();
+		$assetManager = AssetManager::getInstance();
+
+		$manager->loadPlugin(Manager::DEFAULT_THEME);  // Since 4.0.0, Many components require a theme to be loaded
+		$assetManager->setTheme($manager->getTheme(Manager::DEFAULT_THEME));
 		$this->log('Running Piwik Initial Install Script');
 		$this->prepare();
 		$this->initDBConnection();
@@ -88,7 +96,7 @@ class PiwikCliInstall {
 	protected function prepare() {
 		$this->log('Preparing Cache and Diagnostics');
 		Filesystem::deleteAllCacheOnUpdate();
-        $diagnosticService = StaticContainer::get('Piwik\Plugins\Diagnostics\DiagnosticService');
+		$diagnosticService = StaticContainer::get('Piwik\Plugins\Diagnostics\DiagnosticService');
 		$diagnosticService->runDiagnostics();
 	}
 
@@ -103,7 +111,11 @@ class PiwikCliInstall {
 			$config->General['session_save_handler'] = $this->config['session_save_handler'];
 		}
 
-		$config->General['salt'] = Common::generateUniqId();
+		$config->General['salt'] = $this->config['salt'] ?? "";  # Try using the salt from the config
+		if (strlen($config->General['salt']) != 32 or !ctype_xdigit($config->General['salt'])) {
+			$config->General['salt'] = Common::generateUniqId();  # If incorrect, generate one ourselves
+		}
+
 		$config->General['installation_in_progress'] = 1;
 		$config->database = $this->config['database'];
 		
@@ -111,7 +123,7 @@ class PiwikCliInstall {
 		$retries = array(10, 20, 30, 40, 50, 60, 70, 80);
 		foreach( $retries as $retry_timeout_index => $retry_timeout ) {
 			try {
-				DbHelper::isDatabaseConnectionUTF8();
+				DbHelper::getDefaultCharset();
 				break;
 			} catch(\Exception $e) {
 				$this->log("Database connection failed. Retrying in $retry_timeout seconds.");
@@ -120,7 +132,7 @@ class PiwikCliInstall {
 			}
 		}
 
-		if (!DbHelper::isDatabaseConnectionUTF8()) {	// Exception will be thrown if cannot connect
+		if (!DbHelper::getDefaultCharset()) {	// Exception will be thrown if cannot connect
 			$config->database['charset'] = 'utf8';
 		}
 		
@@ -210,7 +222,8 @@ class PiwikCliInstall {
 		// Put in Activated plugins
 		Manager::getInstance()->loadActivatedPlugins();
 
-		exec("php " . PIWIK_DOCUMENT_ROOT . "/console core:update --yes");	// Ugh. NFI why I can't do this...
+		// Create security settings to restrict access appropriately
+		exec("php " . PIWIK_DOCUMENT_ROOT . "/console core:create-security-files");
 	}
 
 	/**
@@ -314,9 +327,6 @@ class PiwikCliInstall {
 			}
 
 			$config->forceSave();
-
-			// And Update Core
-			exec("php " . PIWIK_DOCUMENT_ROOT . "/console core:update --yes");
 		}
 	}
 
